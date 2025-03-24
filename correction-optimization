@@ -1,0 +1,213 @@
+---
+title: "Defining Optimization Function"
+author: "Mally Shan - Spring 2025"
+output: pdf_document
+urlcolor: blue
+---
+
+# Setting Up the Simulation:: 
+
+- Assuming no correlation between covariates
+- Assuming doubling of odds ratio for the effect of explanatory variable on outcome 
+- Assuming no effect of x2 on outcome
+- Making sure both eyes for the same patient MRN has the same beta0 value
+
+```{r}
+
+set.seed(102)
+
+  i = 1
+  sim_x1 <- c()
+  sim_x2 <- c()
+  sim_y <- c()
+  sim_id <- c()
+  sim_beta0 <- c()
+  
+  while(i < 147){
+    
+    #defining distribution parameters of covariate 1:
+    x1_mean <- mean(covariate1)
+    x1_sd <- sd(covariate1)
+    
+    #defining distribution parameters of covariate 2: DM_duration
+    x2_mean <- mean(covariate2)
+    x2_sd <- sd(covariate2)
+    
+    #assuming no correlation between covariates 
+    covariates_cor <- 0 
+    cov_matrix <- matrix(c(x1_sd, covariates_cor, covariates_cor, x2_sd), nrow = 2)
+    
+    #creating multivariate normal distribution between covariates
+    x1_x2 <- mvrnorm(1, mu = c(x1_mean, x2_mean), 
+                      Sigma = cov_matrix)
+    
+    #appending simulated covariates
+    sim_x1 <- append(sim_x1, x1_x2[1])
+    sim_x2 <- append(sim_x2, x1_x2[2])
+    
+    #assuming doubling of odds ratio for the effect of explanatory var on outcome 
+    beta1 <- log(2)
+    
+    #assuming no effect of x2 on outcome
+    beta2 <- 0
+    
+    #appending patient MRN, which we will control for 
+    #making sure each eye has the same beta0 value
+    #defining mean of beat0 based on previous tuning 
+    if (i %% 2 == 1) {
+      beta0 <- rnorm(n=1, mean = tuned_mean, sd = 1)
+      sim_beta0 <- append(sim_beta0, beta0)
+      sim_beta0 <- append(sim_beta0, beta0)
+      sim_id <- append(sim_id, i)
+      sim_id <- append(sim_id, i)
+      } 
+    else {
+      beta0 <- sim_beta0[i]
+      }
+    
+    #calculating y based on above distribution parameters
+    y <- rbern(1, prob = (exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2])/(1+exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2]))))
+    
+    #appending simulated covariates
+    sim_y <- append(sim_y, y)
+    i = i + 1
+    
+  }
+  
+  sim_data <- data.frame(sim_y, sim_x1, sim_x2, sim_id, sim_beta0)
+  
+```
+
+# Testing Log-Likelihood::
+
+```{r}
+
+family = binomial(link = "logit")
+
+model <- glmer(sim_y ~ sim_x1 + sim_x2 + (1|sim_id),
+                      family = 'binomial',
+                      data = sim_data)
+
+## fixed effects from model: fixef(model)
+fixed_effects <- fixef(model) 
+
+## random effects from model: ranef(model)$sim_id[1]
+Z <- as.list(ranef(model)$sim_id[1])$`(Intercept)` 
+
+parameters <- c(fixed_effects, Z)
+  
+  ## these are the initial parameters you take in:
+  ## fixed effects from model: fixef(model)
+  # fixed_effects <- fixef(mixed_effect) 
+  fixed_effects <- parameters[1:3]
+  
+  ## random effects from model: ranef(model)$sim_id[1]
+  # Z <- as.list(ranef(mixed_effect)$sim_id[1])$`(Intercept)` 
+  Z <- parameters[4:length(parameters)]
+  
+  # Step 1: Calculate the linear predictors using the updated beta parameters
+  X <- model.matrix(model) #design matrix for fixed effects
+  linear_predictors <- X %*% fixed_effects #predictors w/ fixed only
+  Z <- rep(Z, each = 2)
+  linear_predictors <- linear_predictors + Z #predictors w/ random effects
+  
+  # Step 2: Calculate the fitted values (predictions) using the updated model
+  fitted_values <- family$linkinv(linear_predictors)
+  
+  # Step 4: Calculate deviance (measure of model fit)
+  n <- length(model@resp$y)
+  wt <- rep(1, n)  # establishes equal weights for all observations
+  deviance <- sum(family$dev.resids(model@resp$y, fitted_values, wt))
+  
+  # Step 5: Calculate AIC (Akaike Information Criterion)
+  #where the beta parameters are being used in calculation of log-likelihood
+  mod_rank <- length(par)
+  aic <- family$aic(model@resp$y, rep(1, n), fitted_values, wt, deviance) + 2 * mod_rank
+  
+  # Step 6: Calculate log-likelihood (from AIC)
+  log_lik <- mod_rank - aic / 2
+  
+  print(log_lik)
+  print(logLik(model))
+
+```
+
+# Defining Custom Function:: 
+
+```{r}
+
+shan_correction <- function(par, model, family = binomial(link = "logit")) {
+  
+  ## these are the initial parameters you take in:
+  ## fixed effects from model: fixef(model)
+  # fixed_effects <- fixef(mixed_effect) 
+  fixed_effects <- par[1:3]
+  
+  ## random effects from model: ranef(model)$sim_id[1]
+  # Z <- as.list(ranef(mixed_effect)$sim_id[1])$`(Intercept)` 
+  Z <- par[4:length(par)]
+  
+  # Step 1: Calculate the linear predictors using the updated beta parameters
+  X <- model.matrix(model) #design matrix for fixed effects
+  linear_predictors <- X %*% fixed_effects #predictors w/ fixed only
+  Z <- rep(Z, each = 2)
+  linear_predictors <- linear_predictors + Z #predictors w/ random effects
+  
+  # Step 2: Calculate the fitted values (predictions) using the updated model
+  fitted_values <- family$linkinv(linear_predictors)
+  
+  # Step 4: Calculate deviance (measure of model fit)
+  n <- length(model@resp$y)
+  wt <- rep(1, n)  # establishes equal weights for all observations
+  deviance <- sum(family$dev.resids(model@resp$y, fitted_values, wt))
+  
+  # Step 5: Calculate AIC (Akaike Information Criterion)
+  #where the beta parameters are being used in calculation of log-likelihood
+  mod_rank <- length(par)
+  aic <- family$aic(model@resp$y, rep(1, n), fitted_values, wt, deviance) + 2 * mod_rank
+  
+  # Step 6: Calculate log-likelihood (from AIC)
+  log_lik <- mod_rank - aic / 2
+  
+  #Step 7: Calculate the firth correction from the model
+  vcov_matrix <- vcov(model)
+  fisher_information_matrix <- solve(vcov_matrix)
+  firth <- 0.5*log(det(fisher_information_matrix))
+  
+  #Step 8: calculating the corrected log-likelihood function with firth 
+  corrected <- log_lik + firth
+
+  # Step 9: Returning the log-likelihood for optimization
+  return(corrected)
+  
+}
+
+```
+
+# Optimization of Initial Parameters:: 
+
+```{r}
+
+## fixed effects from model: fixef(model)
+fixed_effects <- fixef(model) 
+
+## random effects from model: ranef(model)$sim_id[1]
+Z <- as.list(ranef(model)$sim_id[1])$`(Intercept)` 
+
+parameters <- c(fixed_effects, Z)
+
+optim_result <- optim(par = parameters, 
+                      fn = shan_correction, 
+                      model = model, 
+                      family = binomial(link = "logit"), 
+                      method = "CG",
+                      control = list(fnscale = -1),
+                      hessian = TRUE) 
+
+#for all of the optimized parameters
+optim_result
+
+#for the optimized beta1 parameter - fixed effect
+optim_result$par[2]
+
+```
