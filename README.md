@@ -1,4 +1,4 @@
-# Senior Thesis Code 
+# Read Me
 
 - When creating the code for this simulation, two classes of conditions were considered:
   - The first class (which comprises simulations 1-3) assumes that there is no hierarchical structure present within the simulated data (such that each i scan is from a different patient).
