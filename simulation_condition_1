@@ -1,0 +1,174 @@
+# Set-Up Condition 1::
+
+- Goal for Condition 1: Yes for effect of covariate of interest (x1) on outcome (y)
+
+## Tuning of Beta0 for Condition 1:
+
+```{r}
+
+set.seed(2)
+
+  #finding the mean and standard deviation for the covariate of interest 
+  x1_mean <- mean(data$x1)
+  x1_sd <- sd(data$x1)
+
+  #finding the mean and standard deviation for the control covariate
+  x2_mean <- mean(data$x2)
+  x2_sd <- sd(data$x2)
+
+  #assuming no correlation between covariates
+  covariates_cor <- 0
+
+  #creating a correlation matrix for covariates 
+  cov_matrix <- matrix(c(x1_sd, covariates_cor, covariates_cor, x2_sd),
+                     nrow = 2)
+
+  #using correlation matrix to sample covariates from multivariate normal distribution 
+  #repeating this procedure 100000 times 
+  x1_x2 <- mvrnorm(n=100000, mu = c(x1_mean, x2_mean),
+                      Sigma = cov_matrix)
+
+  #this is what we change for each iteration to tune beta 
+  beta0 <- tuned_beta
+
+  #assuming doubling of odds ratio for the effect of explanatory var on outcome
+  beta1 <- log(2)
+
+  #assuming no effect of x2 on outcome
+  beta2 <- 0
+
+  #compute all the 10000 probabilities for y = 1 based on logistic function
+  P_y1 <- 1 / (1 + exp(-(beta0 + beta1 * x1_x2[,1] + beta2 * x1_x2[,2])))
+
+  #sample y from Bernoulli distribution based on P(y=1)
+  y_sampled <- rbern(100000, prob = P_y1)
+
+  #we want the mean of the y_sampled value to be as close to p0 as possible from the original data 
+  mean(y_sampled)
+
+```
+
+## Simulations for Condition 1: 
+
+```{r, echo=FALSE, warning=FALSE, messages=FALSE}
+
+set.seed(2)
+
+simulations = 0 
+
+all_logit_results <- vector(mode = "list", length = 100)
+logit_errors <- 0 
+
+all_firth_results <- vector(mode = "list", length = 100)
+log_firth_errors <- 0 
+
+while(simulations < 100){
+  
+  i = 1
+  sim_x1 <- c()
+  sim_x2 <- c()
+  sim_y <- c()
+  
+  while(i < 147){
+    
+    #defining distribution parameters of covariate 1
+    x1_mean <- mean(data$x1)
+    x1_sd <- sd(data$x1)
+    
+    #defining distribution parameters of covariate 2
+    x2_mean <- mean(data$x2)
+    x2_sd <- sd(data$x2)
+    
+    #assuming no correlation between covariates 
+    covariates_cor <- 0 
+    cov_matrix <- matrix(c(x1_sd, covariates_cor, covariates_cor, x2_sd), nrow = 2)
+    
+    #creating multivariate normal distribution between covariates
+    x1_x2 <- mvrnorm(1, mu = c(x1_mean, x2_mean), 
+                      Sigma = cov_matrix)
+    
+    #appending simulated covariates
+    sim_x1 <- append(sim_x1, x1_x2[1])
+    sim_x2 <- append(sim_x2, x1_x2[2])
+    
+    #assuming doubling of odds ratio for the effect of explanatory var on outcome 
+    beta1 <- log(2)
+    
+    #assuming no effect of x2 on outcome
+    beta2 <- 0
+    
+    #pre-tuned intercept for foot ulcers group from above section! 
+    beta0 <- tuned_beta
+    
+    #calculating y based on above distribution parameters
+    y <- rbern(1, prob = (exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2])/(1+exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2]))))
+    
+    #appending simulated covariates
+    sim_y <- append(sim_y, y)
+    i = i + 1
+  }
+  
+  sim_data <- data.frame(sim_y, sim_x1, sim_x2)
+  
+  #try-catch for glm model
+  logit_result <- tryCatch({
+    
+    #caculating b1 and bias
+    logistic <- glm(sim_y ~ sim_x1 + sim_x2, data = sim_data, family = binomial)
+    logit_b1 <- coef(summary(logistic))[2,1]
+    logit_bias <- logit_b1 - log(2)
+    
+    #calculating confidence intervals and coverage
+    logit_lower <- confint(logistic)[2,1]
+    logit_upper <- confint(logistic)[2,2]
+    if (0 >= logit_lower & 0 <= logit_upper) {logit_cover = 1} else {logit_cover = 0}
+    
+    #calculating type 1 error/power
+    if (summary(logistic)$coefficients[2,4] <= 0.05){logit_prob = 1} else {logit_prob = 0}
+    
+    #saving all calculated values of simulation into list 
+    all_logit_results[[simulations+1]] <- list(logit_b1 = logit_b1, 
+                                             logit_bias = logit_bias,
+                                             logit_lower = logit_lower,
+                                             logit_upper = logit_upper,
+                                             logit_cover = logit_cover,
+                                             logit_prob = logit_prob)
+    }, error = function(e) {
+      #need to use the global assignment operator for counting total errors caught by try-catch 
+      logit_errors <<- logit_errors + 1
+      })
+  
+  #try-catch for firth correction model
+  firth_result <- tryCatch({
+    
+    #caculating b1 and bias
+    firth_corrected <- logistf(sim_y ~ sim_x1 + sim_x2, data = sim_data)
+    firth_b1 <- summary(firth_corrected)$coefficients
+    firth_b1 <- firth_b1[2]
+    firth_bias <- firth_b1 - log(2)
+    
+    #calculating confidence intervals and coverage
+    firth_lower <- confint(firth_corrected)[2,1]
+    firth_upper <- confint(firth_corrected)[2,2]
+    if (log(2) >= firth_lower & log(2) <= firth_upper) {firth_cover = 1} else{firth_cover = 0}
+    
+    #calculating type 1 error/power
+    if (firth_corrected$prob[2] <= 0.05) {firth_prob = 1} else {firth_prob = 0}
+    
+    #saving all calculated values of simulation into list 
+    all_firth_results[[simulations+1]] <- list(firth_b1 = firth_b1, 
+                                               firth_bias = firth_bias,
+                                               firth_lower = firth_lower,
+                                               firth_upper = firth_upper,
+                                               firth_cover = firth_cover,
+                                               firth_prob = firth_prob)
+    }, error = function(e) {
+      #need to use the global assignment operator for counting total errors caught by try-catch 
+      firth_errors <<- firth_errors + 1
+      })
+
+  simulations = simulations + 1
+
+}
+
+```
