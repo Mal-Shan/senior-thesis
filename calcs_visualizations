@@ -1,0 +1,307 @@
+## Estimates Calculation:
+
+### * Logistic Results from Condition #1 - 
+
+```{r}
+
+set.seed(2)
+
+##logit function results
+
+save(all_logit_results, file = "1-4-Logistic.RData")
+
+#mean b1 parameter estimate across all 100 simulations
+all_logit_b1 <- unlist(sapply(all_logit_results, function(x) x$logit_b1))
+mean(all_logit_b1)
+
+#mean bias parameter estimate across all 100 simulations
+all_logit_bias <- unlist(sapply(all_logit_results, function(x) x$logit_bias))
+mean(all_logit_bias)
+
+#coverage across all 100 simulations
+all_logit_cover <- unlist(sapply(all_logit_results, function(x) x$logit_cover))
+(sum(all_logit_cover==1)/100)
+
+#power/type one error across all 100 simulations
+all_logit_prob <- unlist(sapply(all_logit_results, function(x) x$logit_prob))
+(sum(all_logit_prob==1)/100)
+
+```
+
+### * Logistic Results with Firth from Condition #1  - 
+
+```{r}
+
+set.seed(2)
+
+##firth function results 
+
+#load("~/NPDR/Final Thesis Analysis/1-4-Firth.RData")
+save(all_firth_results, file = "1-4-Firth.RData")
+
+#mean b1 parameter estimate across all 100 simulations
+all_log_firth_b1 <- unlist(sapply(all_firth_results, function(x) x$firth_b1))
+mean(all_log_firth_b1)
+
+#mean bias parameter estimate across all 100 simulations
+all_log_firth_bias <- unlist(sapply(all_firth_results, function(x) x$firth_bias))
+mean(all_log_firth_bias)
+
+#coverage across all 100 simulations
+all_log_firth_cover <- unlist(sapply(all_firth_results, function(x) x$firth_cover))
+(sum(all_log_firth_cover==1)/100)
+
+#power/type one error across all 100 simulations
+all_log_firth_prob <- unlist(sapply(all_firth_results, function(x) x$firth_prob))
+(sum(all_log_firth_prob==1)/100)
+
+```
+
+### * Mixed Results from #4  - 
+
+```{r}
+
+set.seed(6)
+
+#load("~/NPDR/Final Thesis Analysis/1-4-Mixed.RData")
+save(all_mixed_results, file = "1-4-Mixed.RData")
+save(mixed_degenerate, file = "1-4-Mixed-Degenerate.RData")
+
+all_mixed_b1 <- unlist(sapply(all_mixed_results, function(x) x$mixed_b1))
+mean(all_mixed_b1)
+
+all_mixed_bias <- unlist(sapply(all_mixed_results, function(x) x$mixed_bias))
+mean(all_mixed_bias)
+
+all_mixed_cover <- unlist(sapply(all_mixed_results, function(x) x$mixed_cover))
+(sum(all_mixed_cover==1)/100)
+
+all_mixed_prob <- unlist(sapply(all_mixed_results, function(x) x$mixed_prob))
+(sum(all_mixed_prob==1)/100)
+
+```
+
+### * Firth Results for Mixed Data from #4  - 
+
+```{r}
+
+set.seed(6)
+
+##firth function results 
+#load("~/NPDR/Final Thesis Analysis/1-4-Mixed-Firth.RData")
+save(all_mixed_firth_results, file = "1-4-Mixed-Firth.RData")
+save(mixed_firth_degenerate, file = "1-4-Mixed-Firth-Degenerate.RData")
+
+#mean b1 parameter estimate across all 100 simulations
+all_mixed_firth_b1 <- unlist(sapply(all_mixed_firth_results, function(x) x$mixed_firth_b1))
+mean(all_mixed_firth_b1)
+
+#mean bias parameter estimate across all 100 simulations
+all_mixed_firth_bias <- unlist(sapply(all_mixed_firth_results, function(x) x$mixed_firth_bias))
+mean(all_mixed_firth_bias)
+
+#coverage across all 100 simulations
+all_mixed_firth_cover <- unlist(sapply(all_mixed_firth_results, function(x) x$mixed_firth_cover))
+(sum(all_mixed_firth_cover==1)/100)
+
+#power/type one error across all 100 simulations
+all_mixed_firth_prob <- unlist(sapply(all_mixed_firth_results, function(x) x$mixed_firth_prob))
+(sum(all_mixed_firth_prob==1)/100)
+
+```
+
+### * Shan Results from #4  - 
+
+```{r}
+
+set.seed(6)
+
+##firth function results 
+#load("~/NPDR/Final Thesis Analysis/1-4-Shan.RData")
+save(all_shan_results, file = "1-4-Shan.RData")
+save(shan_degenerate, file = "1-4-Mixed-Shan-Degenerate.RData")
+
+#mean b1 parameter estimate across all 100 simulations
+all_shan_b1 <- unlist(sapply(all_shan_results, function(x) x$shan_b1))
+mean(all_shan_b1)
+
+#mean bias parameter estimate across all 100 simulations
+all_shan_bias <- unlist(sapply(all_shan_results, function(x) x$shan_bias))
+mean(all_shan_bias)
+
+```
+
+## - Boxplots:  
+
+### * Across all Five Models - 
+
+```{r}
+
+all_b1_estimates <- data.frame(Logistic = c(as.numeric(all_logit_b1), 
+                                            rep(NA, logit_errors)),
+                               Logistic_Firth = c(as.numeric(all_log_firth_b1), 
+                                            rep(NA,log_firth_errors)),
+                               Mixed = c(as.numeric(all_mixed_b1),
+                                         rep(NA, mixed_errors)),
+                               Firth = c(as.numeric(all_mixed_firth_b1), 
+                                         rep(NA, mixed_firth_errors)),
+                               Shan = c(as.numeric(all_shan_b1),
+                                         rep(NA,3)))
+
+all_b1_estimates <- melt(all_b1_estimates, variable.name = "Model_Type", value.name = "Beta1_Estimates")
+
+```
+
+```{r}
+
+#standard boxplot
+ggplot(all_b1_estimates, 
+       aes(x = Model_Type, y = Beta1_Estimates, 
+           fill = Model_Type)) +
+  geom_boxplot() +
+  labs(title = "Standard Boxplot", x = "Model Type", y = "Beta1 Estimates") + 
+  scale_fill_manual(values = c("lightblue", "skyblue", "skyblue2", "skyblue3", 
+                               "skyblue4")) +
+  theme_light() +
+  theme(text = element_text(family = "Times New Roman", size = 11),
+        axis.title.x = element_text(margin = margin(t = 10), family = "Times New Roman"),
+        axis.title.y = element_text(margin = margin(r = 10), family = "Times New Roman"),
+        plot.title = element_text(family = "Times New Roman"),
+        axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   face = "bold"),
+        axis.text.y = element_text(face = "bold")) + 
+  geom_hline(yintercept = log(2), color = "red", size = 0.5)
+
+ggsave("Condition 1 and 4 - Standard.jpg", width=9, height=4)
+
+```
+
+### * No Mixed Effect -  
+
+```{r}
+
+all_b1_estimates <- data.frame(Logistic = c(as.numeric(all_logit_b1), 
+                                            rep(NA, logit_errors)),
+                               Logistic_Firth = c(as.numeric(all_log_firth_b1), 
+                                            rep(NA,log_firth_errors)))
+
+all_b1_estimates <- melt(all_b1_estimates, variable.name = "Model_Type", value.name = "Beta1_Estimates")
+
+
+```
+
+```{r}
+
+#standard boxplot
+ggplot(all_b1_estimates, 
+       aes(x = Model_Type, y = Beta1_Estimates, 
+           fill = Model_Type)) +
+  geom_boxplot() +
+  labs(title = "Standard Boxplot", x = "Model Type", y = "Beta1 Estimates") + 
+  scale_fill_manual(values = c("skyblue4", "skyblue")) +
+  theme_light() +
+  theme(text = element_text(family = "Times New Roman", size = 11),
+        axis.title.x = element_text(margin = margin(t = 10), family = "Times New Roman"),
+        axis.title.y = element_text(margin = margin(r = 10), family = "Times New Roman"),
+        plot.title = element_text(family = "Times New Roman"),
+        axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   face = "bold"),
+        axis.text.y = element_text(face = "bold")) + 
+  geom_hline(yintercept = log(2), color = "red", size = 0.5)
+
+ggsave("Condition 1 and 4 - Standard, No Mixed Effect.jpg", width=9, height=4)
+
+```
+
+### * Yes Mixed Effect - 
+
+```{r}
+
+all_b1_estimates <- data.frame(Mixed = c(as.numeric(all_mixed_b1),
+                                         rep(NA, mixed_errors)),
+                               Firth = c(as.numeric(all_mixed_firth_b1), 
+                                         rep(NA, mixed_firth_errors)),
+                               Shan = c(as.numeric(all_shan_b1),
+                                         rep(NA,3)))
+
+all_b1_estimates <- melt(all_b1_estimates, variable.name = "Model_Type", value.name = "Beta1_Estimates")
+
+```
+
+```{r}
+
+#standard boxplot
+ggplot(all_b1_estimates, 
+       aes(x = Model_Type, y = Beta1_Estimates, 
+           fill = Model_Type)) +
+  geom_boxplot() +
+  labs(title = "Standard Boxplot", x = "Model Type", y = "Beta1 Estimates") + 
+  scale_fill_manual(values = c("skyblue4", "skyblue2", "lightblue")) +
+  theme_light() +
+  theme(text = element_text(family = "Times New Roman", size = 11),
+        axis.title.x = element_text(margin = margin(t = 10), family = "Times New Roman"),
+        axis.title.y = element_text(margin = margin(r = 10), family = "Times New Roman"),
+        plot.title = element_text(family = "Times New Roman"),
+        axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   face = "bold"),
+        axis.text.y = element_text(face = "bold")) + 
+  geom_hline(yintercept = log(2), color = "red", size = 0.5)
+
+ggsave("Condition 1 and 4 - Standard, Mixed Effect.jpg", width=9, height=4)
+
+```
+
+### * Removing Degenerate Cases - 
+
+```{r}
+
+all_b1_estimates <- data.frame(Logistic = c(as.numeric(all_logit_b1), 
+                                            rep(NA, logit_errors)),
+                               Logistic_Firth = c(as.numeric(all_log_firth_b1), 
+                                            rep(NA,log_firth_errors)),
+                               Mixed = c(as.numeric(all_mixed_b1),
+                                         rep(NA, mixed_errors)),
+                               Firth = c(as.numeric(all_mixed_firth_b1), 
+                                         rep(NA, mixed_firth_errors)),
+                               Shan = c(as.numeric(all_shan_b1),
+                                         rep(NA,3)))
+
+all_b1_estimates <- melt(all_b1_estimates, variable.name = "Model_Type", value.name = "Beta1_Estimates")
+
+all_b1_estimates <- all_b1_estimates %>%
+  filter(Beta1_Estimates <= 1 & Beta1_Estimates >= -1)
+
+```
+
+```{r}
+
+#standard boxplot
+ggplot(all_b1_estimates, 
+       aes(x = Model_Type, y = Beta1_Estimates, 
+           fill = Model_Type)) +
+  geom_boxplot() +
+  labs(title = "Standard Boxplot", x = "Model Type", y = "Beta1 Estimates") + 
+  scale_fill_manual(values = c("lightblue", "skyblue", "skyblue2", "skyblue3", 
+                               "skyblue4")) +
+  theme_light() +
+  theme(text = element_text(family = "Times New Roman", size = 11),
+        axis.title.x = element_text(margin = margin(t = 10), family = "Times New Roman"),
+        axis.title.y = element_text(margin = margin(r = 10), family = "Times New Roman"),
+        plot.title = element_text(family = "Times New Roman"),
+        axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   face = "bold"),
+        axis.text.y = element_text(face = "bold")) + 
+  geom_hline(yintercept = log(2), color = "red", size = 0.5)
+
+ggsave("Condition 1 and 4 - Standard, Removing Degenerate.jpg", 
+       width=9, height=4)
+
+```
