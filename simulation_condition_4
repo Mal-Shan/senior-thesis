@@ -1,0 +1,258 @@
+# Set-Up Condition 4::
+
+- Goal for Condition 4: Yes for effect of covariate of interest (x1) on outcome (y), with different x1/x2 covariates per eye
+
+## Tuning of Beta0 for Condition 4: 
+  
+```{r}
+
+# set.seed(6)
+
+x1_mean <- mean(data$x1)
+x1_sd <- sd(data$x1)
+
+x2_mean <- mean(data$x2)
+x2_sd <- sd(data$x2)
+
+#assuming no correlation between covariates 
+covariates_cor <- 0 
+cov_matrix <- matrix(c(x1_sd, covariates_cor, covariates_cor, x2_sd), nrow = 2)
+
+#generating different values by adjusting n=100000
+x1_x2 <- mvrnorm(n=100000, mu = c(x1_mean, x2_mean), Sigma = cov_matrix)
+
+#randomly generate beta0 for each pair of eyes 
+i = 1 
+beta0 <- c()
+while(i < 50001){
+  beta0i <- rnorm(n=1, mean = -3.975, sd = 1)
+  beta0 <- append(beta0, beta0i)
+  beta0 <- append(beta0, beta0i)
+  i = i + 1
+}
+
+#assuming doubling of odds ratio for the effect of explanatory variable on outcome
+beta1 <- log(2)
+
+#assuming no effect of x2 on outcome
+beta2 <- 0 
+
+#Compute all the 10000 probabilities for y = 1 based on logistic function
+P_y1 <- 1 / (1 + exp(-(beta0 + beta1 * x1_x2[,1] + beta2 * x1_x2[,2])))
+
+#Sample y from Bernoulli distribution based on P(y=1)
+y_sampled <- rbern(100000, prob = P_y1)
+
+#We want the mean of the y_sampled value to be as close to p0 as possible from the dataset
+mean(y_sampled)
+
+```
+
+## Simulations for Condition 4:
+
+
+```{r, echo=FALSE, warning=FALSE, messages=FALSE}
+
+set.seed(6)
+
+simulations = 0 
+
+all_mixed_results <- vector(mode = "list", length = 100)
+mixed_degenerate <- vector(mode = "list", length = 100)
+mixed_errors <- 0 
+
+all_mixed_firth_results <- vector(mode = "list", length = 100)
+mixed_firth_degenerate <- vector(mode = "list", length = 100)
+mixed_firth_errors <- 0 
+
+all_shan_results <- vector(mode = "list", length = 100)
+shan_degenerate <- vector(mode = "list", length = 100)
+shan_errors <- 0
+
+while(simulations < 100){
+  
+  i = 1
+  sim_x1 <- c()
+  sim_x2 <- c()
+  sim_y <- c()
+  sim_id <- c()
+  sim_beta0 <- c()
+  
+  while(i < 147){
+    
+    #defining distribution parameters of covariate 1: NV Vessel Density
+    x1_mean <- mean(data$x1)
+    x1_sd <- sd(data$x1)
+    
+    #defining distribution parameters of covariate 2: DM_duration
+    x2_mean <- mean(data$x2)
+    x2_sd <- sd(data$x2)
+    
+    #assuming no correlation between covariates 
+    covariates_cor <- 0 
+    cov_matrix <- matrix(c(x1_sd, covariates_cor, covariates_cor, x2_sd), nrow = 2)
+    
+    #creating multivariate normal distribution between covariates
+    x1_x2 <- mvrnorm(1, mu = c(x1_mean, x2_mean), 
+                      Sigma = cov_matrix)
+    
+    #appending simulated covariates
+    sim_x1 <- append(sim_x1, x1_x2[1])
+    sim_x2 <- append(sim_x2, x1_x2[2])
+    
+    #assuming doubling of odds ratio for the effect of explanatory var on outcome 
+    beta1 <- log(2)
+    
+    #assuming no effect of x2 on outcome
+    beta2 <- 0
+    
+    #appending patient MRN, which we will control for 
+    #making sure each eye has the same beta0 value
+    if (i %% 2 == 1) {
+      beta0 <- rnorm(n=1, mean = tuned_beta0, sd = 1)
+      sim_beta0 <- append(sim_beta0, beta0)
+      sim_beta0 <- append(sim_beta0, beta0)
+      sim_id <- append(sim_id, i)
+      sim_id <- append(sim_id, i)
+      } 
+    else {
+      beta0 <- sim_beta0[i]
+      }
+    
+    #calculating y based on above distribution parameters
+    y <- rbern(1, prob = (exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2])/(1+exp(beta0+beta1*x1_x2[1]+beta2*x1_x2[2]))))
+    
+    #appending simulated covariates
+    sim_y <- append(sim_y, y)
+    i = i + 1
+    
+  }
+  
+  sim_data <- data.frame(sim_y, sim_x1, sim_x2, sim_id, sim_beta0)
+  
+  #try-catch for mixed effect without firth correction
+  mixed_result <- tryCatch({
+
+    #calculating b1 and bias from the mixed effect glmer model 
+    mixed_effect <- glmer(sim_y ~ sim_x1 + sim_x2 + (1|sim_id),
+                          family = 'binomial',
+                          data = sim_data)
+    mixed_odds_ratios <- fixef(mixed_effect)
+    mixed_b1 <- mixed_odds_ratios[2]
+    mixed_bias <- mixed_b1 - log(2)
+
+    #calculating p-values from the mixed effect glmer model 
+    mixed_p_values <- summary(mixed_effect)$coefficients[2, 4]
+
+    #calculating the confidence intervals based on mixed effect model 
+    mixed_conf_intervals <- confint(mixed_effect, method = "Wald")
+    mixed_lower <- mixed_conf_intervals[3,1]
+    mixed_upper <- mixed_conf_intervals[3,2]
+
+  #calculating the coverage of the confidence interval 
+  if (log(2) >= mixed_lower & log(2) <= mixed_upper){mixed_cover = 1}else{mixed_cover = 0}
+
+  #calculating the type 1 error/power from the confidence interval 
+  if (mixed_p_values <= 0.05){mixed_prob = 1} else {mixed_prob = 0}
+
+  #determining the number of times there were "degenerate cases" in the simulation 
+  if(mixed_b1 >= 5 || mixed_b1 <= -5 ){
+    mixed_degenerate[[simulations+1]] <- list(mixed_b1 = mixed_b1,
+                                              mixed_sim = sim_data)
+  }
+
+  #adding all the results of from the simulation into one list 
+  all_mixed_results[[simulations+1]] <- list(mixed_b1 = mixed_b1, 
+                                             mixed_bias = mixed_bias,
+                                             mixed_lower = mixed_lower,
+                                             mixed_upper = mixed_upper,
+                                             mixed_cover = mixed_cover,
+                                             mixed_prob = mixed_prob)
+  
+    }, error = function(e) {
+      
+      #need to use the global assignment operator for counting total errors when running simulation model
+      mixed_errors <<- mixed_errors + 1
+      mixed_degenerate[[simulations+1]] <- list(mixed_b1 = mixed_b1,
+                                                mixed_sim = sim_data)
+      })
+  
+  #try-catch for firth correction without mixed effect
+  mixed_firth_result <- tryCatch({
+    
+    #caculating b1 and bias
+    mixed_firth_corrected <- logistf(sim_y ~ sim_x1 + sim_x2, data = sim_data)
+    mixed_firth_b1 <- summary(mixed_firth_corrected)$coefficients
+    mixed_firth_b1 <- mixed_firth_b1[2]
+    mixed_firth_bias <- mixed_firth_b1 - log(2)
+    
+    #calculating confidence intervals and coverage
+    mixed_firth_lower <- confint(mixed_firth_corrected)[2,1]
+    mixed_firth_upper <- confint(mixed_firth_corrected)[2,2]
+    if (log(2) >= mixed_firth_lower & log(2) <= mixed_firth_upper) {mixed_firth_cover = 1} else{mixed_firth_cover = 0}
+    
+    #calculating type 1 error/power
+    if (mixed_firth_corrected$prob[2] <= 0.05) {mixed_firth_prob = 1} else {mixed_firth_prob = 0}
+    
+    if(mixed_firth_b1 >= 5 || mixed_firth_b1 <= -5 ){
+    mixed_firth_degenerate[[simulations+1]] <- list(mixed_firth_b1 = mixed_firth_b1,
+                                                    mixed_firth_sim = sim_data)
+    }
+    
+    #saving all calculated values of simulation into list 
+    all_mixed_firth_results[[simulations+1]] <- list(mixed_firth_b1 = mixed_firth_b1, 
+                                                     mixed_firth_bias = mixed_firth_bias,
+                                                     mixed_firth_lower = mixed_firth_lower,
+                                                     mixed_firth_upper = mixed_firth_upper,
+                                                     mixed_firth_cover = mixed_firth_cover,
+                                                     mixed_firth_prob = mixed_firth_prob)
+    }, error = function(e) {
+       #need to use the global assignment operator for counting total errors when running simulation model
+      mixed_firth_errors <<- mixed_firth_errors + 1
+      mixed_firth_degenerate[[simulations+1]] <- list(mixed_firth_b1 = mixed_firth_b1,
+                                                      mixed_firth_sim = sim_data)
+      })
+  
+  #try-catch for mixed effect with firth correction
+  shan_result <- tryCatch({
+    
+    mixed_effect <- glmer(sim_y ~ sim_x1 + sim_x2 + (1|sim_id),
+                          family = 'binomial',
+                          data = sim_data)
+    
+    ## fixed effects from model: fixef(model)
+    fixed_effects <- fixef(mixed_effect)
+    
+    ## random effects from model: ranef(model)$sim_id[1]
+    Z <- as.list(ranef(mixed_effect)$sim_id[1])$`(Intercept)` 
+    
+    ## creating parameters list with fixed and random effects
+    parameters <- c(fixed_effects, Z)
+
+    shan_results <- shan_optimized(parameters, mixed_effect)
+    shan_b1 <- shan_results$par[2]
+    shan_bias <- shan_b1 - log(2)
+    
+    #saving calculated values of simulation into list so far
+    #could not calculate the p-value and confidence interval for these estimates
+    all_shan_results[[simulations+1]] <- list(shan_b1 = shan_b1, 
+                                              shan_bias = shan_bias)
+    
+    if(shan_b1 >= 5 || shan_b1 <= -5 ){
+      shan_degenerate[[simulations+1]] <- list(shan_b1 = shan_b1,
+                                               shan_sim = sim_data)
+    }
+
+    }, error = function(e) {
+      #need to use the global assignment operator for counting total errors when running simulation model
+      shan_errors <<- shan_errors + 1
+      shan_degenerate[[simulations+1]] <- list(shan_b1 = shan_b1,
+                                               shan_sim = sim_data)
+      })
+
+  simulations = simulations + 1
+
+}
+
+```
+
